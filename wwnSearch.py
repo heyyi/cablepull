@@ -1,10 +1,9 @@
-#!/usr/bin/python3
-#  -*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 #
 #   Author  :   He, YI
 #   E-mail  :   yi.he@dell.com
 #   Date    :   25/12/17
-#   Desc    :   do cable pull test based on wwpn only
+#   Desc    :   do switch search on wwpn only
 #
 import sys, getopt
 import paramiko
@@ -19,18 +18,11 @@ logging.basicConfig(level=logging.INFO)
 BroSearchSwitch = ["10.228.99.11", "emc/Elab0123"]
 CiscoSearchSwitch = ["10.228.99.17", "emc/Emc12345"]
 vsan_id = ["25"]
-L_Swtich_Type = {1:"brocade", 2:"cisco"}
+L_Switch_Type = {1:"brocade", 2:"cisco"}
 s_switchfile = "switch.ini"
 
 def searchSwitch(wwn):
     login_switch = ""
-    if re.match(r"^([a-zA-Z0-9]{2}:){7}[a-zA-Z0-9]{2}", wwn):
-        pass
-    elif re.match(r"^[a-zA-Z0-9]{16}$", wwn):
-        wwn = wwn[0:2] + ":" + wwn[2:4] + ":" + wwn[4:6] + ":" + wwn[6:8] \
-         + ":" + wwn[8:10] + ":" + wwn[10:12] + ":" + wwn[12:14] + ":" + wwn[14:16]
-    else:
-        exit("wwpn format is incorrect")
 
 
 ###search wwn on Brocade switch
@@ -115,7 +107,7 @@ def searchSwitch(wwn):
                 login_switch = login_switch.split()[1]
                 login_switch = login_switch[1:-1]
         logger.info("========================switch port info===========================================")
-        logger.info("Switch type : " + L_Swtich_Type[switch_type])
+        logger.info("Switch type : " + L_Switch_Type[switch_type])
         logger.info("Login switch : " + login_switch, )
         logger.info("Switch port :" + s_port)
 
@@ -146,13 +138,7 @@ def searchCredential(s_ip, s_switchfile):
 
 
 
-def brocade_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i_timeToWait):
-    if i_interval < 0 :
-        exit("interval must be larger than 0")
-    elif i_interval == 0:
-        logger.info("interval = 0 will cause issue on switch, Changing it to 1")
-        i_interval = 1
-
+def brocade_cablepull(login_switch, s_port, user, passwd, i_interval, i_times):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(login_switch, username=user, password=passwd)
@@ -162,25 +148,18 @@ def brocade_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i
         logger.info("|||||||||||||||||||||||||||||||running the " + str(i+1) + " round|||||||||||||||||||||||||||||||||||||||||||")
         logger.info("shutdown " + s_port + "\n")
         channel.send("portdisable -i {}\n".format(s_port))
-        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         time.sleep(i_interval)
         out = channel.recv(9999)
         logger.info("no shutdown " + s_port + "\n")
         channel.send("portenable -i {}\n".format(s_port))
-        logger.info("||  waiting for " + str(i_timeToWait) + "  seconds")
-        time.sleep(i_timeToWait)
+        time.sleep(i_interval)
         out = channel.recv(9999)
         logger.info("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
 
     return 0
 
 
-def cisco_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i_timeToWait):
-    if i_interval < 0 :
-        exit("interval must be larger than 0")
-    elif i_interval == 0:
-        logger.info("interval = 0 will cause issue on switch, Changing it to 1")
-        i_interval = 1
+def cisco_cablepull(login_switch, s_port, user, passwd, i_interval, i_times):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(login_switch, username=user, password=passwd)
@@ -200,11 +179,9 @@ def cisco_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i_t
         channel.send('shutdown\n')
         time.sleep(i_interval)
         out = channel.recv(9999)
-        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         logger.info("no shutdown " + s_port + "\n")
         channel.send('no shutdown\n')
-        logger.info("||  waiting for " + str(i_timeToWait) + "  seconds")
-        time.sleep(i_timeToWait)
+        time.sleep(i_interval)
         out = channel.recv(9999)
         logger.info("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
 
@@ -221,11 +198,9 @@ def main(argv):
    i_times = 1
    s_interval = ""
    s_times = ""
-   s_timeToWait = ""
    queryOnly = False
    try:
-      opts, args = getopt.getopt(argv,"hqw:i:n:d:t:",["help", "query", "wwpn=", "interval=","number=", "dest=",\
-                                                      "timeToWait="])
+      opts, args = getopt.getopt(argv,"hqw:i:n:d:",["help", "query", "wwpn=", "interval=","number=", "dest="])
    except getopt.GetoptError:
       print("cablepull.py -w <wwpn> -i <interval> -n <times>")
       sys.exit(2)
@@ -245,18 +220,20 @@ def main(argv):
          i_times = int(s_times)
       elif opt in ("-d", "--dest"):
          destination = arg
-      elif opt in ("-t", "--timeToWait"):
-         s_timeToWait = arg
-         i_timeToWait = int(s_timeToWait)
-
    #pattern = re.compile(r'hello')
    #if re.match(r"(^[a-zA-Z0-9]{2}[:]){7,7}[a-zA-Z0-9]{2}$", s_wwpn):
    if s_wwpn == "":
        print("cablepull.py -w <wwpn> -i <interval> -n <times>")
        exit()
+   elif re.match(r"^([a-zA-Z0-9]{2}:){7}[a-zA-Z0-9]{2}", s_wwpn):
+       pass
+   elif re.match(r"^[a-zA-Z0-9]{16}$", s_wwpn):
+       s_wwpn = s_wwpn[0:2] + ":" + s_wwpn[2:4] + ":" +  s_wwpn[4:6]  + ":" + s_wwpn[6:8] \
+           + ":" + s_wwpn[8:10] + ":" + s_wwpn[10:12] + ":" + s_wwpn[12:14] + ":" + s_wwpn[14:16]
 
-   if s_timeToWait == "":
-       i_timeToWait = i_interval
+   else:
+       exit("wwpn format is incorrect")
+
 
 
    logger.info("==================================runnning cable pull per below input=====================================")
@@ -294,9 +271,9 @@ def main(argv):
 
    logger.info("=====================================starting cable pull on switch===================================")
    if switch_type == 1:
-      brocade_cablepull(login_switch, s_port, user, passwd,i_interval, i_times, i_timeToWait)
+      brocade_cablepull(login_switch, s_port, user, passwd,i_interval, i_times)
    elif switch_type == 2:
-      cisco_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i_timeToWait)
+      cisco_cablepull(login_switch, s_port, user, passwd, i_interval, i_times)
    else:
       pass
 
