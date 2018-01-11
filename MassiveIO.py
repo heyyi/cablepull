@@ -1,6 +1,5 @@
-[root @ e2e - 4 - 10040 IOScript]  # cat MassiveIO.py
-# !/usr/bin/env python
-# -*- coding:utf-8 -*-
+#!/usr/local/bin/python3
+#  -*- coding:utf-8 -*-
 #
 #   Author  :   He, YI
 #   E-mail  :   yi.he@dell.com
@@ -15,67 +14,106 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-L_lun = []
-
 
 def judge_multipath():
     '''
     find out the multipath software in the 
     '''
+
+    multipath_type = -1
     pp_flag = subprocess.call(["which", "powermt"])
     mpio_flag = subprocess.call(["which", "multipath"])
     if pp_flag == 0:
         multipath_type = 1
+        query_cmd = "powermt display dev=all | grep power"
+        dev_prefix = "/dev/"
     elif mpio_flag == 0:
         multipath_type = 0
-    else:
-        multipath_type = -1
-    return multipath_type
+        query_cmd = "multipath -ll|grep mpath"
+        dev_prefix = "/dev/mapper/"
+
+    return (multipath_type, dev_prefix, query_cmd)
+
+
+
+
+def filterUsedLun(L_lun):
+    pv_cmd = "pvscan | grep 'mpath\|power'"
+    df_cmd = "df -k | grep 'mpath\|power'"
+
+#    (multipath_type, dev_prefix, query_cmd) = judge_multipath()
+
+    p = subprocess.Popen(pv_cmd, shell=True, stdout=subprocess.PIPE)
+    output, err = p.communicate()
+    for line in output.splitlines():
+        temp_dev = str(line.split()[1],"utf-8").strip()
+        L_lun = list(filter(lambda x: x != temp_dev, L_lun))
+
+
+    p = subprocess.Popen(df_cmd, shell=True, stdout=subprocess.PIPE)
+    output, err = p.communicate()
+    for line in output.splitlines():
+        temp_dev = str(line.split()[0],"utf-8").strip()
+        L_lun = filter(lambda x: x != temp_dev, L_lun)
+
+    return L_lun
 
 
 def list_lun():
     '''
-    find out the LUNs from specific array by array id and filter out the luns in use
+    list all the luns and label them with array id, filter out the luns in use
     '''
-    L_lun = []
-    remove_list = []
-    array_id = input('Please enter your array_id:')
-    multipath_type = judge_multipath()
-    if multipath_type == 0:
-        query_cmd = "multipath -ll|grep mpath|grep " + str(array_id)
-        pv_cmd = "pvscan | grep mpath"
-        df_cmd = "df -k | grep mpath"
-        dev_prefix = "/dev/mapper/"
-    elif multipath_type == 1:
-        query_cmd = "powermt display dev=all | grep power"
-        pv_cmd = "pvscan | grep power"
-        df_cmd = "df -k | grep power"
-        dev_prefix = "/dev/"
+    L_lun = list()
+    L_Avlun = list()
+    #remove_list = []
+    (multipath_type, dev_prefix, query_cmd) = judge_multipath()
 
     logger.debug("the multipath is:", multipath_type)
     p = subprocess.Popen(query_cmd, shell=True, stdout=subprocess.PIPE)
-
     output, err = p.communicate()
     for line in output.splitlines():
         # temp_dev = str((line.split())[0],"utf-8")
-        temp_dev = str(line.split()[0])
-        L_lun.append(dev_prefix + temp_dev)
+        temp_dev = str(line.split()[0], "utf-8")
+        L_lun.append(dev_prefix+temp_dev)
 
-    p = subprocess.Popen(pv_cmd, shell=True, stdout=subprocess.PIPE)
+    L_AvLun = filterUsedLun(L_lun)
+    D_lun = labelbyId(L_AvLun)
+    return D_lun
 
-    output, err = p.communicate()
-    for line in output.splitlines():
-        temp_dev = str(line.split()[1])
-        L_lun = filter(lambda x: x != temp_dev, L_lun)
+def labelbyId(L_lun):
 
-    p = subprocess.Popen(df_cmd, shell=True, stdout=subprocess.PIPE)
+    D_lun = dict()
+    for tempdev in L_lun:
+        #temp_list = list()
+        sg_inq_cmd = "sg_inq " + tempdev
+        p = subprocess.Popen(sg_inq_cmd, shell=True, stdout=subprocess.PIPE)
+        output, err = p.communicate()
+        for line in output.splitlines():
+            line = str(line, "utf-8")
+            # temp_dev = str((line.split())[0],"utf-8")
+            if "Vendor identification" in line:
+                s_vendor = line.split(":")[1]
+            if "Product identification" in line:
+                s_product = line.split(":")[1]
+            if "Unit serial number" in line:
+                s_unitSN = line.split(":")[1]
+                s_ArraySN = s_unitSN[0:7]
 
-    output, err = p.communicate()
-    for line in output.splitlines():
-        # temp_dev = str((line.split())[0],"utf-8")
-        L_lun = filter(lambda x: x != temp_dev, L_lun)
+                #        if s_ArraySN in S_lun.keys():
+                # if tempdev not in S_lun[s_ArraySN][1]:
+                #             D_lun = S_lun[s_ArraySN][1]
+                #             D_lun.append(tempdev)
+                #             S_lun[s_ArraySN][1] = D_lun
+                #        else:
+                #            D_lun.append(tempdev)
+                #            S_lun[s_ArraySN][1] = D_lun
+        s_array = s_vendor + s_product + s_ArraySN
+        if s_array in D_lun.keys():
+            D_lun[s_array].append(tempdev)
+        else:
+            D_lun[s_array] = [tempdev]
 
-    return L_lun
+    return D_lun
 
 
 def format_lun(L_lun):
@@ -193,20 +231,49 @@ def start_IO(L_dir):
 #       else:
 #          logger.info(cmd + ":" + "failed")
 
+def FilterByArrayId(D_lun):
+    print("Please choose which array's LUNs to make filesystem:")
+    i = 0
+    L_array = list()
+    for arrayId in D_lun.keys():
+        print(str(i+1) + "." + arrayId )
+        i = i + 1
+        L_array.append(arrayId)
+
+    s_choice = input('input your choice:')
+    while int(s_choice) not in range(i+1):
+        s_choice = input('input your choice with right digit:')
+    L_lun = D_lun[L_array[int(s_choice)-1]]
+    return L_lun
+
+
+
+
+
+
 
 
 # def find(name, path):
 #    for root, dirs, files in os.walk(path):
 #        if name in files:
 #            return os.path.join(root, name)
+def main():
+    L_Avlun = []
+    fio_exist = subprocess.call(["which", "fio"])
+    if fio_exist != 0:
+        logger.info("fio is not installed! ")
+        exit()
+    D_lun = list_lun()
+    L_AvLun = FilterByArrayId(D_lun)
+    print(L_AvLun)
 
-fio_exist = subprocess.call(["which", "fio"])
-if fio_exist != 0:
-    logger.info("fio is not installed! ")
-    exit()
+    # L_lun = list_lun_byArrayId()
 
-L_lun = list_lun()
-# format_lun(L_lun)
-L_dir = mount_lun(L_lun)
-start_IO(L_dir)
 
+
+    format_lun(L_AvLun)
+    L_dir = mount_lun(L_AvLun)
+    #start_IO(L_dir)
+
+
+main()
