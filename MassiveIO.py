@@ -5,7 +5,7 @@
 #   E-mail  :   yi.he@dell.com
 #   Date    :   24/12/17
 #   Desc    :   create file system on specific array's LUNs and start IO
-#
+#   Update  :   11/01/18
 
 import subprocess
 import platform
