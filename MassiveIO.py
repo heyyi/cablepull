@@ -39,7 +39,7 @@ def judge_multipath():
 
 def filterUsedLun(L_lun):
     pv_cmd = "pvscan | grep 'mpath\|power'"
-    df_cmd = "df -k | grep 'mpath\|power'"
+    df_cmd = "df -k | grep mpath"
 
 #    (multipath_type, dev_prefix, query_cmd) = judge_multipath()
 
@@ -54,7 +54,7 @@ def filterUsedLun(L_lun):
     output, err = p.communicate()
     for line in output.splitlines():
         temp_dev = str(line.split()[0],"utf-8").strip()
-        L_lun = filter(lambda x: x != temp_dev, L_lun)
+        L_lun = list(filter(lambda x: x != temp_dev, L_lun))
 
     return L_lun
 
@@ -165,7 +165,7 @@ def format_lun(L_lun):
 
 
 def mount_lun(L_lun):
-    with open('./mounted_file', "r+") as fp:
+    with open('./mounted_file', "w+") as fp:
         fp.seek(0)
         fp.truncate()
         L_dir = []
@@ -189,7 +189,7 @@ def mount_lun(L_lun):
             if p_status == 0:
                 logger.info(cmd + ":" + "successful")
                 L_dir.append("/zoner/" + mnt_dev)
-                fp.write("/zoner/" + mnt_dev)
+                fp.write("/zoner/" + mnt_dev + "\n")
             else:
                 logger.info(cmd + ":" + "failed")
 
