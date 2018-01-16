@@ -97,7 +97,10 @@ def labelbyId(L_lun):
                 s_product = line.split(":")[1]
             if "Unit serial number" in line:
                 s_unitSN = line.split(":")[1]
-                s_ArraySN = s_unitSN[0:7]
+                if "XtremApp" in s_product:
+                    s_ArraySN = "FNM" + s_unitSN[3:]
+                else:
+                    s_ArraySN = s_unitSN[0:7]
 
                 #        if s_ArraySN in S_lun.keys():
                 # if tempdev not in S_lun[s_ArraySN][1]:
@@ -131,17 +134,17 @@ def format_lun(L_lun):
             logger.info("the support file system is :" + str(rhel7_fs))
             ls_fs = rhel7_fs
         elif linux_dis[1].startswith('6'):
-            logger.info("the support file system is :" + rhel6_fs)
+            logger.info("the support file system is :" + str(rhel6_fs))
             ls_fs = rhel6_fs
-    elif linux_dis[0].find("SLES") != -1:
+    elif linux_dis[0].find("SUSE") != -1:
         if linux_dis[1].startswith('12'):
-            logger.info("the support file system is :" + sles12_fs)
+            logger.info("the support file system is :" + str(sles12_fs))
             ls_fs = sles12_fs
         elif linux_dis[1].startswith('11'):
-            logger.info("the support file system is :" + sles11_fs)
+            logger.info("the support file system is :" + str(sles11_fs))
             ls_fs = sles11_fs
     else:
-        logger.info("the support file system is :" + default_fs)
+        logger.info("the support file system is :" + str(default_fs))
         ls_fs = default_fs
     n_fs = len(ls_fs)
     for index, key in enumerate(L_lun):
@@ -197,8 +200,8 @@ def mount_lun(L_lun):
 
 
 def start_IO(L_dir):
-    global fio_exist
-    if fio_exist == 0:
+#    global fio_exist
+#    if fio_exist == 0:
         with open("fio.ini", "w") as fp:
             fp.seek(0)
             fp.truncate()
@@ -208,18 +211,21 @@ def start_IO(L_dir):
             fp.write("runtime=999999999\n")
             fp.write("time_based=1\n")
             fp.write("direct=1\n")
-            fp.write("buffered=0\n")
             fp.write("ioengine=libaio\n")
-            fp.write("iodepth=32\n")
+            #fp.write("iodepth=32\n")
             fp.write("bsrange=4k-64k\n")
             fp.write("verify=md5\n")
+            fp.write("rw=randrw\n")
+            fp.write("rwmixread=83\n")
+            fp.write("percentage_random=80\n")
+            fp.write("group_reporting=1\n")
             for index, dir in enumerate(L_dir):
                 logger.info(dir)
                 fp.write('[' + str(index) + '_' + (dir.split('/'))[-1] + ']' + "\n")
                 fp.write('directory=' + dir + "\n")
-                fp.write("rw=rw\n")
-            fio_cmd = "fio fio.ini"
-            proc = subprocess.Popen(fio_cmd, shell=True)
+            #    fp.write("rw=rw\n")
+            fio_cmd = "screen fio fio.ini --output=fio.log"
+            #proc = subprocess.Popen(fio_cmd, shell=True)
 
 
 # p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
@@ -273,7 +279,7 @@ def main():
 
     format_lun(L_AvLun)
     L_dir = mount_lun(L_AvLun)
-    #start_IO(L_dir)
+    start_IO(L_dir)
 
 
 main()
