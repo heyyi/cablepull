@@ -199,7 +199,7 @@ def mount_lun(L_lun):
     return L_dir
 
 
-def start_fio(L_dir):
+def prepare_fio(L_dir):
 #    global fio_exist
 #    if fio_exist == 0:
         with open("fio.ini", "w") as fp:
@@ -224,8 +224,21 @@ def start_fio(L_dir):
                 fp.write('[' + str(index) + '_' + (dir.split('/'))[-1] + ']' + "\n")
                 fp.write('directory=' + dir + "\n")
             #    fp.write("rw=rw\n")
-            fio_cmd = "screen fio fio.ini --output=fio.log"
-            #proc = subprocess.Popen(fio_cmd, shell=True)
+
+
+def prepare_vdbenchraw(L_AvLun):
+    with open("devs.vdb", "w") as fp:
+        fp.seek(0)
+        fp.truncate()
+        for index, temp_dev in enumerate(L_AvLun):
+            logger.info(temp_dev)
+            fp.write("sd=sd%d,lun=%s,openflags=o_direct\n" % (index+1, temp_dev) )
+
+            #    fp.write("rw=rw\n")
+
+def startIO():
+    fio_cmd = "screen fio fio.ini --output=fio.log"
+    proc = subprocess.Popen(fio_cmd, shell=True)
 
 
 # p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
@@ -272,14 +285,15 @@ def main():
     D_lun = list_lun()
     L_AvLun = FilterByArrayId(D_lun)
     print(L_AvLun)
+    prepare_vdbenchraw(L_AvLun)
 
     # L_lun = list_lun_byArrayId()
 
 
 
-    format_lun(L_AvLun)
-    L_dir = mount_lun(L_AvLun)
-    start_fio(L_dir)
+  #  format_lun(L_AvLun)
+  #  L_dir = mount_lun(L_AvLun)
+  #  start_fio(L_dir)
 
 
 main()
