@@ -199,7 +199,7 @@ def mount_lun(L_lun):
     return L_dir
 
 
-def start_IO(L_dir):
+def start_fio(L_dir):
 #    global fio_exist
 #    if fio_exist == 0:
         with open("fio.ini", "w") as fp:
@@ -279,7 +279,7 @@ def main():
 
     format_lun(L_AvLun)
     L_dir = mount_lun(L_AvLun)
-    start_IO(L_dir)
+    start_fio(L_dir)
 
 
 main()
