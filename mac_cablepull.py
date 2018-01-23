@@ -59,7 +59,7 @@ def readMacList(s_macfile, D_mac2_sw):
             logger.debug(line)
             (mkey, sw_vlan, sw_ip, sw_port) = line.split()
             D_mac2sw[mkey] = [sw_vlan, sw_ip, sw_port]
-    logger.info(D_mac2sw)
+    logger.debug(D_mac2sw)
     # return D_mac2sw
 
 
@@ -94,7 +94,7 @@ def findMacOnSwitch(s_mac, sw_type, sw_ip, sw_crendential):
 
     user = sw_crendential.split("/")[0]
     passwd = sw_crendential.split("/")[1]
-    logger.info("Searching Mac on %s switch %s"%(sw_type,sw_ip))
+    logger.info("--------->Searching Mac on %s switch %s"%(sw_type,sw_ip))
     if sw_type == "Brocade":
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -106,7 +106,7 @@ def findMacOnSwitch(s_mac, sw_type, sw_ip, sw_crendential):
        # channel.send("terminal length 0\n")
        # out = read_until(channel, '#')
        # time.sleep(.5)
-        logger.info(show_mac_cmd)
+        logger.debug(show_mac_cmd)
         channel.send(show_mac_cmd)
         out = read_until(channel, '#')
         logger.debug("the result is " + out)
@@ -127,6 +127,7 @@ def findMacOnSwitch(s_mac, sw_type, sw_ip, sw_crendential):
                     D_mac2sw[temp_mac] = [temp_vlan, sw_ip, temp_port]
                     if temp_mac == s_mac:
                         sw_port = "Te" + temp_port
+                        logger.info("mac %s is found in switch port %s" % (temp_mac, temp_port))
         ssh.close()
     elif sw_type == "Mellanox":
         ssh = paramiko.SSHClient()
@@ -276,22 +277,30 @@ def brocade_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(login_switch, username=user, password=passwd)
     channel = ssh.invoke_shell()
+    read_until(channel,'#')
+    channel.send('config t\n')
+    time.sleep(.5)
+    channel.recv(9999)
+    s_port = s_port[0:2] + " " + s_port[2:]
+    channel.send("interface {}\n".format(s_port))
+    logger.info("interface {}\n".format(s_port))
+    time.sleep(.5)
     out = channel.recv(9999)
     for i in range(i_times):
         logger.info("|||||||||||||||||||||||||||||||running the " + str(
             i + 1) + " round|||||||||||||||||||||||||||||||||||||||||||")
         logger.info("shutdown " + s_port + "\n")
-        channel.send("portdisable -i {}\n".format(s_port))
+        channel.send('shutdown\n')
         logger.info("||  waiting for " + str(i_interval) + "  seconds")
         time.sleep(i_interval)
         out = channel.recv(9999)
         logger.info("no shutdown " + s_port + "\n")
-        channel.send("portenable -i {}\n".format(s_port))
+        channel.send('no shutdown\n')
         logger.info("||  waiting for " + str(i_timeToWait) + "  seconds")
         time.sleep(i_timeToWait)
         out = channel.recv(9999)
-        logger.info("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
-
+        logger.info("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
+    ssh.close()
     return 0
 
 
@@ -305,7 +314,7 @@ def cisco_cablepull(sw_ip, s_port, user, passwd, i_interval, i_times, i_timeToWa
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(sw_ip, username=user, password=passwd)
     channel = ssh.invoke_shell()
-    channel.recv(9999)
+    read_until(channel,'#')
     channel.send('config t\n')
     time.sleep(.5)
     channel.recv(9999)
@@ -318,9 +327,9 @@ def cisco_cablepull(sw_ip, s_port, user, passwd, i_interval, i_times, i_timeToWa
             i + 1) + " round|||||||||||||||||||||||||||||||||||||||||||")
         logger.info("shutdown " + s_port + "\n")
         channel.send('shutdown\n')
+        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         time.sleep(i_interval)
         out = channel.recv(9999)
-        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         logger.info("no shutdown " + s_port + "\n")
         channel.send('no shutdown\n')
         logger.info("||  waiting for " + str(i_timeToWait) + "  seconds")
@@ -343,7 +352,7 @@ def mellanox_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, 
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(login_switch, username=user, password=passwd)
     channel = ssh.invoke_shell()
-    out = channel.recv(9999)
+    read_until(channel,'>')
     channel.send('enable\n')
     time.sleep(.5)
     channel.send('config t\n')
@@ -359,9 +368,9 @@ def mellanox_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, 
             i + 1) + " round|||||||||||||||||||||||||||||||||||||||||||")
         logger.info("shutdown " + s_port + "\n")
         channel.send('shutdown\n')
+        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         time.sleep(i_interval)
         out = channel.recv(9999)
-        logger.info("||  waiting for " + str(i_interval) + "  seconds")
         logger.info("no shutdown " + s_port + "\n")
         channel.send('no shutdown\n')
         logger.info("||  waiting for " + str(i_timeToWait) + "  seconds")
@@ -406,7 +415,7 @@ def arista_cablepull(login_switch, s_port, user, passwd, i_interval, i_times, i_
         time.sleep(i_timeToWait)
         out = channel.recv(9999)
         logger.info("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
-
+    ssh.close()
     # print "sleep 300s..."
     #  time.sleep(300)
     return 0
@@ -467,13 +476,10 @@ def main(argv):
     readMacList(s_macfile, D_mac2sw)
     readSwitchList(s_switchfile, D_sw)
     logger.debug("D_sw is:")
-    logger.info(D_sw)
-    logger.info(D_mac2sw)
+    logger.debug(D_sw)
 
     if s_mac in D_mac2sw.keys():
         logger.info(s_mac + " in  mac.db")
-
-        print(D_mac2sw)
         sw_ip = D_mac2sw[s_mac][1]
         logger.debug(sw_ip)
         sw_crendential = D_sw[sw_ip][4]
