@@ -89,4 +89,4 @@ for command in commands:
     print stdout.read()
     print( "Errors")
     print stderr.read()
-c.close()
+c.close() 
