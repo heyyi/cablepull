@@ -56,8 +56,18 @@ def filterUsedLun(L_lun):
         temp_dev = str(line.split()[0],"utf-8").strip()
         L_lun = list(filter(lambda x: x != temp_dev, L_lun))
 
-    return L_lun
+    linux_dis = platform.linux_distribution()
+    if linux_dis[0].find("SUSE") != -1:
+        fence_cmd = "systemctl status sbd | grep slot"
+        p = subprocess.Popen(fence_cmd, shell=True, stdout=subprocess.PIPE)
+        output, err = p.communicate()
+        for line in output.splitlines():
+            temp_dev = str(line.split()[3],"utf-8").strip()
+            L_lun = list(filter(lambda x: x != temp_dev, L_lun))
 
+
+
+    return L_lun
 
 def list_lun():
     '''
@@ -198,6 +208,15 @@ def mount_lun(L_lun):
 
     return L_dir
 
+def prepare_iozone(L_lun):
+    with open('./iozone_list', "w+") as fp:
+        fp.seek(0)
+        fp.truncate()
+        for dev in L_lun:
+            mnt_dev = (dev.split('/'))[-1]
+            fp.write(mnt_dev + "\n")
+        
+        
 
 def prepare_fio(L_dir):
 #    global fio_exist
@@ -238,17 +257,17 @@ def prepare_vdbenchraw(L_AvLun):
 
 def startIO():
     fio_cmd = "screen fio fio.ini --output=fio.log"
-    proc = subprocess.Popen(fio_cmd, shell=True)
+ #   proc = subprocess.Popen(fio_cmd, shell=True)
 
 
-# p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-#       output, err = p.communicate()
-#       p_status = p.wait()
-#       logger.debug(cmd + "output : ", output)
-#       if p_status == 0:
-#          logger.info(cmd + ":" + "successful")
-#       else:
-#          logger.info(cmd + ":" + "failed")
+ #p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+ #      output, err = p.communicate()
+ #      p_status = p.wait()
+ #      logger.debug(cmd + "output : ", output)
+ #      if p_status == 0:
+ #         logger.info(cmd + ":" + "successful")
+ #      else:
+ #         logger.info(cmd + ":" + "failed")
 
 def FilterByArrayId(D_lun):
     print("Please choose which array's LUNs to make filesystem:")
@@ -285,15 +304,17 @@ def main():
     D_lun = list_lun()
     L_AvLun = FilterByArrayId(D_lun)
     print(L_AvLun)
-    prepare_vdbenchraw(L_AvLun)
+    #prepare_vdbenchraw(L_AvLun)
 
     # L_lun = list_lun_byArrayId()
 
 
 
-  #  format_lun(L_AvLun)
-  #  L_dir = mount_lun(L_AvLun)
-  #  start_fio(L_dir)
+    format_lun(L_AvLun)
+    L_dir = mount_lun(L_AvLun)
+    prepare_iozone(L_AvLun)
+    prepare_fio(L_dir)
+#    start_fio(L_dir)
 
 
 main()
