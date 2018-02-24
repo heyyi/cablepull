@@ -133,10 +133,10 @@ def format_lun(L_lun):
     '''
     Make the file system on the listed LUNs
     '''
-    rhel7_fs = sles12_fs = ("ext2", "ext3", "ext4", "xfs", "btrfs")
+    default_fs = rhel7_fs = sles12_fs = ("ext2", "ext3", "ext4", "xfs", "btrfs")
     rhel6_fs = ("ext2", "ext3", "ext4", "xfs")
     sles11_fs = ("ext2", "ext3", "xfs", "btrfs", "ReiserFS")
-    default_fs = ("ext2", "ext3")
+    #default_fs = ("ext2", "ext3")
     linux_dis = platform.linux_distribution()
     logger.info("the current linux distribution is " + linux_dis[0] + " " + linux_dis[1])
     if linux_dis[0].find("Red") != -1:
@@ -313,7 +313,7 @@ def main():
     format_lun(L_AvLun)
     L_dir = mount_lun(L_AvLun)
     prepare_iozone(L_AvLun)
-    prepare_fio(L_dir)
+    #prepare_fio(L_dir)
 #    start_fio(L_dir)
 
 
