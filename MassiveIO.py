@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/python3
 #  -*- coding:utf-8 -*-
 #
 #   Author  :   He, YI
@@ -78,12 +78,17 @@ def list_lun():
     #remove_list = []
     (multipath_type, dev_prefix, query_cmd) = judge_multipath()
 
-    logger.debug("the multipath is:", multipath_type)
+    logger.info("the multipath is:" + str(multipath_type))
     p = subprocess.Popen(query_cmd, shell=True, stdout=subprocess.PIPE)
     output, err = p.communicate()
     for line in output.splitlines():
         # temp_dev = str((line.split())[0],"utf-8")
-        temp_dev = str(line.split()[0], "utf-8")
+        line = str(line, "utf-8")
+        if(multipath_type == 0):
+            temp_dev = line.split()[0]
+        elif(multipath_type == 1):
+            temp_dev = line.split("=")[1]
+
         L_lun.append(dev_prefix+temp_dev)
 
     L_AvLun = filterUsedLun(L_lun)
@@ -254,6 +259,13 @@ def prepare_vdbenchraw(L_AvLun):
             fp.write("sd=sd%d,lun=%s,openflags=o_direct\n" % (index+1, temp_dev) )
 
             #    fp.write("rw=rw\n")
+def prepare_copa(L_AvLun):
+    with open("devs.copa", "w") as fp:
+        fp.seek(0)
+        fp.truncate()
+        for index, temp_dev in enumerate(L_AvLun):
+            logger.info(temp_dev)
+            fp.write("DEVICE: -R-N%s\n" % (temp_dev) )
 
 def startIO():
     fio_cmd = "screen fio fio.ini --output=fio.log"
@@ -300,21 +312,23 @@ def main():
     fio_exist = subprocess.call(["which", "fio"])
     if fio_exist != 0:
         logger.info("fio is not installed! ")
-        exit()
+#        exit()
     D_lun = list_lun()
     L_AvLun = FilterByArrayId(D_lun)
     print(L_AvLun)
-    #prepare_vdbenchraw(L_AvLun)
+#    prepare_vdbenchraw(L_AvLun)
+    prepare_copa(L_AvLun)
 
     # L_lun = list_lun_byArrayId()
 
+    
 
-
-    format_lun(L_AvLun)
-    L_dir = mount_lun(L_AvLun)
-    prepare_iozone(L_AvLun)
+#    format_lun(L_AvLun)
+#    L_dir = mount_lun(L_AvLun)
+#    prepare_iozone(L_AvLun)
     #prepare_fio(L_dir)
 #    start_fio(L_dir)
 
 
 main()
+
