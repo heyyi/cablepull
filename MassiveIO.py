@@ -11,35 +11,41 @@ import subprocess
 import platform
 import logging
 
+multipath_software_lst = [ "mpio", "powerpath", "nvme"]
+query_cmd_lst = [ "multipath -ll | grep mpath", "powermt display dev=all | grep power", "nvme list|grep nvme"]
+multipath_type = -1
+
+
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
 def judge_multipath():
     '''
-    find out the multipath software in the 
+    find out the multipath software in the
     '''
 
-    multipath_type = -1
     pp_flag = subprocess.call(["which", "powermt"])
     mpio_flag = subprocess.call(["which", "multipath"])
-    if pp_flag == 0:
+    nvme_flag = subprocess.call(["which", "nvme"])
+    if nvme_flag == 0:
+        multipath_type = 2
+        return multipath_type
+    elif pp_flag == 0:
         multipath_type = 1
-        query_cmd = "powermt display dev=all | grep power"
-        dev_prefix = "/dev/"
+        return multipath_type
     elif mpio_flag == 0:
         multipath_type = 0
-        query_cmd = "multipath -ll|grep mpath"
-        dev_prefix = "/dev/mapper/"
-
-    return (multipath_type, dev_prefix, query_cmd)
+        return multipath_type
+        
 
 
 
 
 def filterUsedLun(L_lun):
-    pv_cmd = "pvscan | grep 'mpath\|power'"
-    df_cmd = "df -k | grep mpath"
+    pv_cmd = "pvscan | grep 'mpath\|power\|nvme'"
+    df_cmd = "df -k | grep 'mpath\|power\|nvme'"
 
 #    (multipath_type, dev_prefix, query_cmd) = judge_multipath()
 
@@ -65,72 +71,98 @@ def filterUsedLun(L_lun):
             temp_dev = str(line.split()[3],"utf-8").strip()
             L_lun = list(filter(lambda x: x != temp_dev, L_lun))
 
+    #L_lun.remove('/dev/Pseudo')
+    #L_lun.remove('/dev/emcpowera')
+    print(L_lun)
 
 
     return L_lun
 
-def list_lun():
+def list_lun(multipath_type):
     '''
     list all the luns and label them with array id, filter out the luns in use
     '''
     L_lun = list()
     L_Avlun = list()
     #remove_list = []
-    (multipath_type, dev_prefix, query_cmd) = judge_multipath()
 
-    logger.info("the multipath is:" + str(multipath_type))
-    p = subprocess.Popen(query_cmd, shell=True, stdout=subprocess.PIPE)
-    output, err = p.communicate()
-    for line in output.splitlines():
+    logger.debug("the multipath is:" + multipath_software_lst[multipath_type])
+    logger.info(query_cmd_lst[multipath_type])
+#    p = subprocess.Popen(query_cmd_lst[multipath_type], shell=True, stdout=subprocess.PIPE)
+#    output, err = p.communicate()
+    out_bytes = subprocess.check_output(query_cmd_lst[multipath_type], shell=True)
+    out_text = out_bytes.decode('utf-8')
+    for line in out_text.splitlines():
         # temp_dev = str((line.split())[0],"utf-8")
-        line = str(line, "utf-8")
-        if(multipath_type == 0):
+        #print("the line is: " + line)
+        #print("multipath_type:" + str(multipath_type))
+        if multipath_type == 0:
             temp_dev = line.split()[0]
-        elif(multipath_type == 1):
+            L_lun.append("/dev/mapper/"+temp_dev)
+        elif multipath_type == 1:
             temp_dev = line.split("=")[1]
+            L_lun.append("/dev/"+temp_dev)
+        elif multipath_type == 2:
+            temp_dev = line.split()[0]
+            #print(temp_dev)
+            L_lun.append(temp_dev)
 
-        L_lun.append(dev_prefix+temp_dev)
-
+    #print("L_lun before filter:" + "".join(L_lun))
     L_AvLun = filterUsedLun(L_lun)
-    D_lun = labelbyId(L_AvLun)
+    D_lun = labelbyId(L_AvLun,multipath_type)
     return D_lun
 
-def labelbyId(L_lun):
+def labelbyId(L_lun,multipath_type):
 
     D_lun = dict()
-    for tempdev in L_lun:
-        #temp_list = list()
-        sg_inq_cmd = "sg_inq " + tempdev
-        p = subprocess.Popen(sg_inq_cmd, shell=True, stdout=subprocess.PIPE)
-        output, err = p.communicate()
-        for line in output.splitlines():
-            line = str(line, "utf-8")
-            # temp_dev = str((line.split())[0],"utf-8")
-            if "Vendor identification" in line:
-                s_vendor = line.split(":")[1]
-            if "Product identification" in line:
-                s_product = line.split(":")[1]
-            if "Unit serial number" in line:
-                s_unitSN = line.split(":")[1]
-                if "XtremApp" in s_product:
-                    s_ArraySN = "FNM" + s_unitSN[3:]
-                else:
-                    s_ArraySN = s_unitSN[0:7]
+    if multipath_type == 2:
 
-                #        if s_ArraySN in S_lun.keys():
-                # if tempdev not in S_lun[s_ArraySN][1]:
-                #             D_lun = S_lun[s_ArraySN][1]
-                #             D_lun.append(tempdev)
-                #             S_lun[s_ArraySN][1] = D_lun
-                #        else:
-                #            D_lun.append(tempdev)
-                #            S_lun[s_ArraySN][1] = D_lun
-        s_array = s_vendor + s_product + s_ArraySN
-        if s_array in D_lun.keys():
-            D_lun[s_array].append(tempdev)
-        else:
-            D_lun[s_array] = [tempdev]
+        for tempdev in L_lun:
+        #    cmd = "nvme list | grep " + tempdev 
+        #    out_bytes = subprocess.check_output(cmd, shell=True)
+        #    out_text = out_bytes.decode('utf-8')
+        #    s_array = out_text.split()[1].strip()
+            s_array = "NVMe"
+            if s_array in D_lun.keys():
+                D_lun[s_array].append(tempdev)
+            else:
+                D_lun[s_array] = [tempdev]
 
+    else:     
+        for tempdev in L_lun:
+            
+            #temp_list = list()
+            sg_inq_cmd = "sg_inq " + tempdev
+            p = subprocess.Popen(sg_inq_cmd, shell=True, stdout=subprocess.PIPE)
+            output, err = p.communicate()
+            for line in output.splitlines():
+                line = str(line, "utf-8")
+                # temp_dev = str((line.split())[0],"utf-8")
+                if "Vendor identification" in line:
+                    s_vendor = line.split(":")[1]
+                if "Product identification" in line:
+                    s_product = line.split(":")[1]
+                if "Unit serial number" in line:
+                    s_unitSN = line.split(":")[1]
+                    if "XtremApp" in s_product:
+                        s_ArraySN = "FNM" + s_unitSN[3:]
+                    else:
+                        s_ArraySN = s_unitSN[0:7]
+    
+                    #        if s_ArraySN in S_lun.keys():
+                    # if tempdev not in S_lun[s_ArraySN][1]:
+                    #             D_lun = S_lun[s_ArraySN][1]
+                    #             D_lun.append(tempdev)
+                    #             S_lun[s_ArraySN][1] = D_lun
+                    #        else:
+                    #            D_lun.append(tempdev)
+                    #            S_lun[s_ArraySN][1] = D_lun
+            s_array = s_vendor + s_product + s_ArraySN
+            if s_array in D_lun.keys():
+                D_lun[s_array].append(tempdev)
+            else:
+                D_lun[s_array] = [tempdev]
+    
     return D_lun
 
 
@@ -220,8 +252,8 @@ def prepare_iozone(L_lun):
         for dev in L_lun:
             mnt_dev = (dev.split('/'))[-1]
             fp.write(mnt_dev + "\n")
-        
-        
+
+
 
 def prepare_fio(L_dir):
 #    global fio_exist
@@ -230,7 +262,7 @@ def prepare_fio(L_dir):
             fp.seek(0)
             fp.truncate()
             fp.write("[global]\n")
-            fp.write("rate_iops=200\n")
+            #fp.write("rate_iops=200\n")
             fp.write("size=1g\n")
             fp.write("runtime=999999999\n")
             fp.write("time_based=1\n")
@@ -241,7 +273,7 @@ def prepare_fio(L_dir):
             fp.write("verify=md5\n")
             fp.write("rw=randrw\n")
             fp.write("rwmixread=83\n")
-            fp.write("percentage_random=80\n")
+            #fp.write("percentage_random=80\n")
             fp.write("group_reporting=1\n")
             for index, dir in enumerate(L_dir):
                 logger.info(dir)
@@ -259,13 +291,6 @@ def prepare_vdbenchraw(L_AvLun):
             fp.write("sd=sd%d,lun=%s,openflags=o_direct\n" % (index+1, temp_dev) )
 
             #    fp.write("rw=rw\n")
-def prepare_copa(L_AvLun):
-    with open("devs.copa", "w") as fp:
-        fp.seek(0)
-        fp.truncate()
-        for index, temp_dev in enumerate(L_AvLun):
-            logger.info(temp_dev)
-            fp.write("DEVICE: -R-N%s\n" % (temp_dev) )
 
 def startIO():
     fio_cmd = "screen fio fio.ini --output=fio.log"
@@ -312,21 +337,22 @@ def main():
     fio_exist = subprocess.call(["which", "fio"])
     if fio_exist != 0:
         logger.info("fio is not installed! ")
-#        exit()
-    D_lun = list_lun()
+    #    exit()
+    multipath_type = judge_multipath()
+    print("multipath_type:outside " + str(multipath_type))
+    D_lun = list_lun(multipath_type)
     L_AvLun = FilterByArrayId(D_lun)
     print(L_AvLun)
 #    prepare_vdbenchraw(L_AvLun)
-    prepare_copa(L_AvLun)
 
     # L_lun = list_lun_byArrayId()
 
-    
 
-#    format_lun(L_AvLun)
-#    L_dir = mount_lun(L_AvLun)
-#    prepare_iozone(L_AvLun)
-    #prepare_fio(L_dir)
+
+    format_lun(L_AvLun)
+    L_dir = mount_lun(L_AvLun)
+    prepare_iozone(L_AvLun)
+    prepare_fio(L_dir)
 #    start_fio(L_dir)
 
 
