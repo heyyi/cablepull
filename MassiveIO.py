@@ -11,8 +11,8 @@ import subprocess
 import platform
 import logging
 
-multipath_software_lst = [ "mpio", "powerpath", "nvme"]
-query_cmd_lst = [ "multipath -ll | grep mpath", "powermt display dev=all | grep power", "nvme list|grep nvme"]
+multipath_software_lst = [ "mpio", "powerpath", "nvme", "nvme_rhel"]
+query_cmd_lst = [ "multipath -ll | grep mpath", "powermt display dev=all | grep power", "nvme list|grep nvme", "multipath -ll |grep NVME"]
 multipath_type = -1
 
 
@@ -31,6 +31,9 @@ def judge_multipath():
     nvme_flag = subprocess.call(["which", "nvme"])
     if nvme_flag == 0:
         multipath_type = 2
+        linux_dis = platform.linux_distribution()
+        if linux_dis[0].find("Red") != -1:
+            multipath_type = 3    
         return multipath_type
     elif pp_flag == 0:
         multipath_type = 1
@@ -38,7 +41,8 @@ def judge_multipath():
     elif mpio_flag == 0:
         multipath_type = 0
         return multipath_type
-        
+    
+
 
 
 
@@ -96,13 +100,13 @@ def list_lun(multipath_type):
         # temp_dev = str((line.split())[0],"utf-8")
         #print("the line is: " + line)
         #print("multipath_type:" + str(multipath_type))
-        if multipath_type == 0:
+        if multipath_type == 0 or multipath_type == 3:
             temp_dev = line.split()[0]
             L_lun.append("/dev/mapper/"+temp_dev)
         elif multipath_type == 1:
             temp_dev = line.split("=")[1]
             L_lun.append("/dev/"+temp_dev)
-        elif multipath_type == 2:
+        elif multipath_type == 2 :
             temp_dev = line.split()[0]
             #print(temp_dev)
             L_lun.append(temp_dev)
@@ -115,14 +119,14 @@ def list_lun(multipath_type):
 def labelbyId(L_lun,multipath_type):
 
     D_lun = dict()
-    if multipath_type == 2:
+    if multipath_type == 2 or multipath_type == 3:
 
         for tempdev in L_lun:
         #    cmd = "nvme list | grep " + tempdev 
         #    out_bytes = subprocess.check_output(cmd, shell=True)
         #    out_text = out_bytes.decode('utf-8')
         #    s_array = out_text.split()[1].strip()
-            s_array = "NVMe"
+            s_array = "nvme"
             if s_array in D_lun.keys():
                 D_lun[s_array].append(tempdev)
             else:
@@ -343,7 +347,7 @@ def main():
     D_lun = list_lun(multipath_type)
     L_AvLun = FilterByArrayId(D_lun)
     print(L_AvLun)
-#    prepare_vdbenchraw(L_AvLun)
+    prepare_vdbenchraw(L_AvLun)
 
     # L_lun = list_lun_byArrayId()
 
